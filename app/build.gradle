@@ -22,6 +22,12 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
+    repositories {
+        google()
+        maven { url "https://oss.sonatype.org/content/repositories/ksoap2-android-releases" }
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
@@ -41,4 +47,20 @@ dependencies {
     testImplementation 'junit:junit:4.+'
     androidTestImplementation 'com.android.support.test:runner:1.0.2'
     androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.2'
+
+    //implementation "com.google.code.ksoap2-android:ksoap2-android:3.6.2"
+
+    implementation 'com.squareup.retrofit2:retrofit:2.1.0'
+    implementation 'com.squareup.okhttp3:okhttp:4.9.3'
+    // https://mvnrepository.com/artifact/com.squareup.okhttp3/okhttp-tls
+    implementation 'com.squareup.okhttp3:okhttp-tls:4.9.3'
+    // https://mvnrepository.com/artifact/javax.xml.bind/jaxb-api
+    implementation 'javax.xml.bind:jaxb-api:2.4.0-b180830.0359'
+    //implementation 'org.apache.httpcomponents:httpclient:4.5.13'
+    // https://mvnrepository.com/artifact/org.apache.axis/axis
+    implementation 'org.apache.axis:axis:1.4'
+
+    // JSON Parsing
+    implementation 'com.google.code.gson:gson:2.6.1'
+    implementation 'com.squareup.retrofit2:converter-gson:2.1.0'
 }
