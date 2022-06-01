@@ -32,10 +32,30 @@ import com.example.myapplication.sw.ApiUtils;
 
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.w3c.dom.Document;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.StringReader;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Random;
+import java.util.TimeZone;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.xpath.XPath;
+import javax.xml.xpath.XPathConstants;
+import javax.xml.xpath.XPathExpressionException;
+import javax.xml.xpath.XPathFactory;
 
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -75,16 +95,19 @@ public class MainActivity extends AppCompatActivity {
 
         WebSettings webSettings = browser.getSettings();
         webSettings.setJavaScriptEnabled(true);
-        String urlSesamoInicial = "https://acceso-desa.sms.carm.es/sesamo/login?service=http://192.168.1.47:8081/ortopediaweb";
+        String urlSesamoInicial = "https://acceso-desa.sms.carm.es/sesamo/login?service=http://192.168.1.35:8081/ortopediaweb";
+
+        //si hacemos Saml no hace falta hacer proxyValidate para coger solo el login
+        // con la opcion de SAML tenemos los roles de usuario
         String urlTrasAutenticar1 = "https://acceso-desa.sms.carm.es/sesamo/proxyValidate?ticket=";
-        String urlTrasAutenticar2 = "&service=http://192.168.1.47:8081/ortopediaweb";
+        String urlTrasAutenticar2 = "&service=http://192.168.1.35:8081/ortopediaweb";
 
+        String urlSamlValidate = "https://acceso-desa.sms.carm.es/sesamo/samlValidate?TARGET=http%3A%2F%2F192.168.1.35%3A8081%2Fortopediaweb%2Fj_spring_cas_security_check";
         /*
-
         String urlSesamoInicial = "https://acceso-pre.sms.carm.es/sesamo/login?service=https://www-pre.sms.carm.es/ortopediaweb/ortosscc/";
         String urlTrasAutenticar1 = "https://acceso-pre.sms.carm.es/sesamo/proxyValidate?ticket=1";
         String urlTrasAutenticar2 = "&service=https://www-pre.sms.carm.es/ortopediaweb/ortosscc/";
-*/
+        */
         /*
         String urlSesamoInicial = "https://acceso-pre.sms.carm.es/sesamo/login?service=https://www-pre.sms.carm.es/habilitas";
         String urlTrasAutenticar1 = "https://acceso-pre.sms.carm.es/sesamo/proxyValidate?ticket=";
@@ -93,14 +116,23 @@ public class MainActivity extends AppCompatActivity {
 
         final String[] login = {""};
         String usuario = "";
+        final String[] ticket = {""};
 
         browser.setWebViewClient(new WebViewClient() {
             int paso = 1;
 
+            @Override
+            public void onPageCommitVisible(WebView view, String url) {
+                super.onPageCommitVisible(view, url);
+
+                Log.i(TAG,"Entra en onPageCmmitVisible");
+            }
 
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
+
+                Log.i(TAG,"Entra en Finished**. URL: " + url);
 
                 if (paso == 1) {
                     browser.evaluateJavascript("(function() { return JSON.stringify(document.URL); })();", new ValueCallback<String>() {
@@ -111,9 +143,17 @@ public class MainActivity extends AppCompatActivity {
                             reader.setLenient(true);
 
                             if (s.contains("ticket")) {
+                                /*
                                 String ticket = s.substring(s.indexOf("ticket=")+7, s.length()-3);
                                 browser.loadUrl(urlTrasAutenticar1+ticket+urlTrasAutenticar2);
-                            paso=2;
+                                */
+
+                                //Cambiamos el uso y solo cogemos el ticket y podemos hacer la llamada para obtener los roles
+                                ticket[0] = s.substring(s.indexOf("ticket=")+7, s.length()-3);
+                                llamadaSoapInicio(ticket[0],
+                                        urlSamlValidate);
+
+                                paso=2;
                             }
                         }
                     });
@@ -153,12 +193,11 @@ public class MainActivity extends AppCompatActivity {
                 "        </Request>\n" +
                 "    </soap:Body>\n" +
                 "</soap:Envelope>";
-        //llamadaSoapInicio(param);
+        ///llamadaSoapInicio(param);
 
         StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder()
                 .permitAll().build();
         StrictMode.setThreadPolicy(policy);
-        llamadaSoapInicio("");
 
         setSupportActionBar(binding.toolbar);
 
@@ -182,25 +221,39 @@ public class MainActivity extends AppCompatActivity {
 
     private APIService mAPIService = ApiUtils.getAPIService();;
 
-    private void llamadaSoapInicio(String params) {
+    private void llamadaSoapInicio(String ticket, String linkRequest) {
 
         OkHttpClient client = new OkHttpClient();
-
         MediaType mediaType = MediaType.parse("text/xml");
+
+        String idAleatorio = "";
+        Random r2 = new Random(new Date().getTime());
+        idAleatorio = String.valueOf(r2.longs());
+
+        //Extraemos la fechaUTC
+        final String DATEFORMAT = "yyyy-MM-dd HH:mm:ss";
+        final SimpleDateFormat sdf = new SimpleDateFormat(DATEFORMAT);
+        sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+        String fechaUTC = sdf.format(new Date());
+
+        /*
+        idAleatorio = "_f3224da6d44bfe03823dad3f79199c40";
+        fechaUTC = "2022-05-30T16:09:06Z";
+        */
 
         String soap = "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns=\"urn:oasis:names:tc:SAML:1.0:protocol\">\n" +
                 "    <soap:Header/>\n" +
                 "    <soap:Body>\n" +
-                "        <Request MajorVersion=\"1\" MinorVersion=\"1\" RequestID=\"_f3224da6d44bfe03823dad3f79199c40\" IssueInstant=\"2022-05-24T11:58:06Z\">\n" +
-                "            <AssertionArtifact1>ST-12577-0koS49j7ESemq12bw4iD-linosa-desa</AssertionArtifact>\n" +
+                "        <Request MajorVersion=\"1\" MinorVersion=\"1\" RequestID=\"" + idAleatorio + "\" IssueInstant=\""+ fechaUTC +"\">\n" +
+                "            <AssertionArtifact>"+ ticket + "</AssertionArtifact>\n" +
                 "        </Request>\n" +
                 "    </soap:Body>\n" +
                 "</soap:Envelope>";
 
         RequestBody body = RequestBody.create(mediaType, soap);
-        String YOUR_LINK = "https://acceso-desa.sms.carm.es/sesamo/samlValidate?TARGET=http%3A%2F%2F192.168.1.45%3A8081%2Fortopediaweb%2Fortosscc%2Fj_spring_cas_security_check";
+        //String YOUR_LINK = "https://acceso-desa.sms.carm.es/sesamo/samlValidate?TARGET=http%3A%2F%2F192.168.1.45%3A8081%2Fortopediaweb%2Fortosscc%2Fj_spring_cas_security_check";
         Request request = new Request.Builder()
-                .url(YOUR_LINK)
+                .url(linkRequest)
                 .post(body)
                 .addHeader("content-type", "text/xml")
                 .build();
@@ -210,98 +263,59 @@ public class MainActivity extends AppCompatActivity {
             response = client.newCall(request).execute();
 
             String resul = response.body().string();
-            int b = 5;
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        int a = 1;
-
-/*
-        mAPIService.llamadaSoap(params).enqueue(new Callback<String>() {
-            @RequiresApi(api = Build.VERSION_CODES.N)
-            @Override
-            public void onResponse(Call<String> call, Response<String> response) {
-                if (response.isSuccessful()) {
-                    Log.i(TAG, "get submitted to API." + response.body().toString());
-                    String resultado = response.body();
-                    if ("S".equals(resultado)) {  //.getResultado().getType()
-                        //action.rellena(resultado.getUbicaciones());
-                        Log.e(TAG,"por el SI");
-                    } else {
-                        //recuperamos algunos mensajes de error para mostrar al usuario
-
-
-                        Log.e(TAG,"por el NO");
-                    }
-                } else {
-                   Log.e(TAG,"por el else");
-                }
-
-            }
-
-            @Override
-            public void onFailure(Call<String> call, Throwable t) {
-                Log.e(TAG, "Unable to get to API.");
-
-            }
-        });
-
- */
-    }
-
-    /*
-    private final String NAME_SPACE = "http://soap.demo.org/";
-    private final String URL = "http://192.x.x.x:8080/WSConversion/WSConversion?WSDL";
-    private final String DEC_TO_BIN_METHOD_NAME = "DecToBin";
-    private final String DEC_TO_BIN_PARAM = "numero";
-    private final String SOAP_ACTION = NAME_SPACE + DEC_TO_BIN_METHOD_NAME;
-
-    private String ConvertDecToBinTask {
-
-            //se crea un nuevo Soap Request
-            SoapObject request = new SoapObject(NAME_SPACE, DEC_TO_BIN_METHOD_NAME);
-
-            String[] values = new String[];
-            values[0] = "hola";
-            values[1] = "hola otra vez";
-
-            //Se agrega propiedad
-        SoapObject soapobj =;
-        request.addSoapObject(soapobj);
-            request.addProperty(DEC_TO_BIN_PARAM, values[0] );
-
-            //llamada al Servicio Web
+            resul = resul.replace("<?xml version=\"1.0\" encoding=\"UTF-8\"?>","");
             try {
-            //se extiende de SoapEnvelope con funcionalidades de serializacion
-            SoapSerializationEnvelope envelope =  new SoapSerializationEnvelope(SoapEnvelope.VER11);
-            //asigna el objeto SoapObject al envelope
-                envelope.set
-            envelope.setOutputSoapObject(request);
-            //capa de transporte http basada en J2SE
-            //crea nueva instancia -> URL: destino de datos SOAP POST
-            HttpTransportSE ht = new HttpTransportSE(URL);
-            //estable cabecera para la accion
-            //SOAP_ACTION: accion a ejecutar
-            //envelope: contiene informacion para realizar la llamada
-            ht.call(SOAP_ACTION, envelope);
+                List roles = extractRol(resul);
+                if (roles.size() > 0) {
+                    //comprobamos que el APLICACION_ROL (RFI_ROLE_USUARIO) está en la aplicación
+                    //TODO: hay que declarar una variable global APLICACON_ROL para compararlo con estos valores
+                    final String APLICACION_ROL = "ORW_ROLE_ADMIN"; //"RFI_ROLE_USUARIO";
 
-            //clase para encapsular datos primitivos representados por una cadena en serialización XML
-            SoapPrimitive response = (SoapPrimitive)envelope.getResponse();
-            StringBuffer result = new StringBuffer(response.toString());
-            String resultado =  result.toString();
+                    long encontrado = roles.stream().filter(x -> x.equals(APLICACION_ROL)).count();
+                    if (encontrado > 0) {
+                        //Permitimos entrar a la aplicación
+                    } else {
+                        //Mostramos al usuario un mensaje popup que no tiene permisos para entrar y redireccionamos a la página
+                        // principal. Previamente haciendo un logout de SeSamO
+                        // url logout:
+                    }
+                }
+            } catch (Exception ex) {
+                Log.i(TAG, "Error al parsear respuesta SAML para obtener roles");
+            }
+
+        } catch (IOException e) {
+            Log.i(TAG, "Error al llamar a samlValidate de SeSamO");
         }
-            catch (Exception e)
-        {
-            e.printStackTrace();
 
-        }
 
-        String s = " ";
-        return s;
     }
 
-     */
+    private List extractRol(String xml) throws IOException, SAXException, ParserConfigurationException, XPathExpressionException {
+        List roles = new ArrayList<String>();
+
+        XPath xPath =  XPathFactory.newInstance().newXPath();
+        String expression = "/Envelope/Body/Response/Assertion/AttributeStatement/Attribute[@AttributeName='ROLES']";
+        //String expression = "//attribute[@attributeName='ROLES']";
+
+        DocumentBuilderFactory builderFactory = DocumentBuilderFactory.newInstance();
+        DocumentBuilder builder = builderFactory.newDocumentBuilder();
+        Document document = builder.parse(new InputSource(new StringReader(xml)));
+        document.getDocumentElement().normalize();
+
+        Node node = (Node) xPath.compile(expression).evaluate(document, XPathConstants.NODE);
+        NodeList nodeList = node.getChildNodes();
+        for (int i = 0;null!=nodeList && i < nodeList.getLength(); i++) {
+            Node nod = nodeList.item(i);
+            if(nod.getNodeType() == Node.ELEMENT_NODE) {
+                roles.add(nod.getFirstChild().getNodeValue());
+                //System.out.println(nodeList.item(i).getNodeName() + " : " + nod.getFirstChild().getNodeValue());
+            }
+        }
+
+        return roles;
+    }
+
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
